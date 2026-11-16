@@ -1,90 +1,74 @@
 [package]
-name = "hbbs"
+name = "rustdesk-server"
 version = "1.1.14"
-authors = ["rustdesk <info@rustdesk.com>"]
+authors = ["Open-trade <open-trade@proton.me>"]
 edition = "2021"
-build = "build.rs"
-default-run = "hbbs"
+description = "RustDesk server for rustdesk-api"
+license = "AGPL-3.0"
+repository = "https://github.com/c4online/rustdesk-server"
 
 [[bin]]
 name = "hbbr"
 path = "src/hbbr.rs"
 
 [[bin]]
-name = "rustdesk-utils"
-path = "src/utils.rs"
+name = "hbbs"
+path = "src/hbbs.rs"
 
-# See more keys and their definitions at https://doc.crates.io/crates-io/cargo/reference/manifest.html
+[[bin]]
+name = "rustdesk-utils"
+path = "src/rustdesk-utils.rs"
 
 [dependencies]
 hbb_common = { path = "libs/hbb_common" }
-serde_derive = "1.0"
-serde = "1.0"
-serde_json = "1.0"
-lazy_static = "1.4"
-clap = "2"
-rust-ini = "0.18"
-minreq = { version = "2.4", features = ["punycode"] }
-machine-uid = "0.2"
-mac_address = "1.1.5"
-whoami = "1.2"
-base64 = "0.13"
-axum = { version = "0.5", features = ["headers"] }
-sqlx = { version = "0.6", features = [ "runtime-tokio-rustls", "sqlite", "macros", "chrono", "json", "offline" ] }
-deadpool = "0.8"
-async-trait = "0.1"
-async-speed-limit = { git = "https://github.com/open-trade/async-speed-limit" }
-uuid = { version = "1.0", features = ["v4"] }
+env_logger = "0.9"
+flexi_logger = "0.22"
 bcrypt = "0.13"
-chrono = { version = "0.4", features = ["serde"] }
-jsonwebtoken = "8"
-headers = "0.3"
-once_cell = "1.8"
-sodiumoxide = "0.2"
-tokio-tungstenite = "0.17"
-tungstenite = "0.17"
-regex = "1.4"
-tower-http = { version = "0.3", features = ["fs", "trace", "cors"] }
-http = "0.2"
-flexi_logger = { version = "0.22", features = ["async", "use_chrono_for_offset", "dont_minimize_extra_stacks"] }
-ipnetwork = "0.20"
-local-ip-address = "0.5.1"
-dns-lookup = "1.0.8"
-ping = "0.4.0"
+clap = { version = "3.0", features = ["derive"] }
+chrono = "0.4"
+tokio = { version = "1.10", features = ["full"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+socket2 = { version = "0.4", features = ["all"] }
+toml = "0.5"
+jsonwebtoken = "8.1"
+base64 = "0.13"
+url = "2.2"
+uuid = { version = "1.0", features = ["v4"] }
+bytes = "1"
+async-trait = "0.1"
+machine-uid = "0.2"
+tokio-tungstenite = { version = "0.17", features = ["native-tls"] }
+rustls = "0.20"
+rustls-pemfile = "1"
+axum = { version = "0.5", features = ["ws", "json"] }
+tower-http = { version = "0.3", features = ["cors", "trace"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "native-tls"], default-features = false, git = "https://github.com/mostlikelee/reqwest", branch = "fix-proxy" }
+async-speed-limit = { git = "https://github.com/open-trade/async-speed-limit", rev = "f89f702a" }
+confy = { git = "https://github.com/rustdesk/confy", rev = "87f06ad" }
+sysinfo = "0.26"
+tokio-socks = { git = "https://github.com/mostlikelee/tokio-socks", rev = "dce4b53" }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono", "json", "offline"] }
+local-ip-address = "0.4"
+sys-locale = "0.2"
 
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-# https://github.com/rustdesk/rustdesk-server-pro/issues/189, using native-tls for better tls support
-reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocking", "socks", "json", "native-tls", "gzip"], default-features=false }
-
-[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
-reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocking", "socks", "json", "rustls-tls", "rustls-tls-native-roots", "gzip"], default-features=false }
-
-[build-dependencies]
-hbb_common = { path = "libs/hbb_common" }
-
-[workspace]
-members = ["libs/hbb_common"]
-exclude = ["ui"]
-
-#https://github.com/johnthagen/min-sized-rust
-#https://doc.crates.io/reference/manifest.html#the-profile-sections
 [profile.release]
 lto = true
 codegen-units = 1
-panic = 'abort'
 strip = true
-#opt-level = 'z' # only have smaller size after strip # Default is 3, better performance
-#rpath = true # Not needed
+panic = "abort"
 
-# 修复 Windows MSVC 下 sqlx_macros.dll 初始化失败 (os error 1114)
-# 根因：全局LTO+codegen-units=1会导致proc-macro编译期DLL被过度优化，在Windows加载器中崩溃
-# 修复：仅对过程宏和编译脚本关闭LTO，主程序仍保留完整release优化
-[profile.release.package.sqlx-macros]
-codegen-units = 16
+[profile.release.package."*"]
 lto = false
-opt-level = 1
+codegen-units = 16
 
 [profile.release.build-override]
 opt-level = 1
-codegen-units = 16
 lto = false
+codegen-units = 16
+
+[profile.release.package.sqlx-macros]
+opt-level = 1
+lto = false
+codegen-units = 16
