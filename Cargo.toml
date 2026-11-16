@@ -1,46 +1,32 @@
 [package]
-name = "hbbs"
+name = "rustdesk-server"
 version = "1.1.14"
-authors = ["Purslane Ltd <info@rustdesk.com>"]
+authors = ["open-trade <open-rustdesk@protonmail.com>"]
 edition = "2021"
-description = "RustDesk Relay/Rendezvous server"
-
-[features]
-sqlite-static = ["hbb_common/sqlite-static"]
+license = "AGPL-3.0"
+description = "RustDesk Server Program"
+repository = "https://github.com/rustdesk/rustdesk-server"
+homepage = "https://rustdesk.com/"
 
 [dependencies]
 hbb_common = { path = "libs/hbb_common" }
-clap = "3"
-socket2 = { version = "0.5", features = ["all"] }
-serde_derive = "1"
-serde = "1"
+clap = "3.0"
+serde_derive = "1.0"
+serde = "1.0"
 toml = "0.5"
+dirs = "4.0"
 rust-ini = "0.18"
-wait-timeout = "0.2"
+flexi_logger = { version = "0.22", features = ["async", "compress", "specfile_without_age", "wait"] }
 signal-hook = "0.3"
-flexi_logger = { version = "0.25", features = ["async", "compress", "specfile_without_notification"] }
-log = "0.4"
-futures = "0.3"
-async-trait = "0.1"
-futures-util = "0.3"
-uuid = { version = "1.0", features = ["v4"] }
-rand = "0.8"
-rusqlite = { version = "0.31", features = ["bundled"] }
-once_cell = "1.4"
-tokio-socks = { git = "https://github.com/rustdesk-org/tokio-socks", rev = "dce4b530db012e60d6758272f335e595a37799cf" }
-confy = { git = "https://github.com/rustdesk-org/confy", rev = "87f06ad8d591f44a742b78c1999665834e98d45a" }
-thiserror = "1.0"
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
-moka = { version = "0.12", features = ["future"] }
-sysinfo = { version = "0.30", default-features = false, features = ["apple-app-store", "network", "system"] }
-machine-uid = { git = "https://github.com/rustdesk-org/machine-uid" }
-default-net = "0.20"
-async-speed-limit = { git = "https://github.com/open-trade/async-speed-limit" }
+sysinfo = { git = "https://github.com/guillaumebeuzeboc/sysinfo", rev = "011dd840" }
+confy = { git = "https://github.com/rustdesk/confy", rev = "87f06ad" }
+rustls = "0.20"
+tokio-rustls = "0.23"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+tokio-socks = "0.5"
 
-[[bin]]
-name = "hbbs"
-path = "src/main.rs"
+[features]
+sqlite-static = ["hbb_common/sqlite-static"]
 
 [[bin]]
 name = "hbbr"
@@ -48,6 +34,10 @@ path = "src/hbbr.rs"
 
 [[bin]]
 name = "rustdesk-utils"
+path = "src/utils.rs"
+
+[workspace]
+members = ["libs/hbb_common"]
 
 [profile.release]
 opt-level = 3
@@ -58,6 +48,8 @@ strip = true
 
 [profile.release.package.sqlx-macros]
 opt-level = 1
+codegen-units = 16
 
-[workspace]
-members = ["libs/hbb_common", "rustdesk-utils"]
+[profile.dev]
+opt-level = 0
+debug = 1
