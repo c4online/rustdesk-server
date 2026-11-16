@@ -24,7 +24,7 @@ jobs:
           - { os: ubuntu-22.04,   target: aarch64-unknown-linux-gnu,      use-cross: y, ext: "" }
           # macOS 两个目标：Intel 用 macos-15-intel，Apple Silicon 用 macos-15
           - { os: macos-15-intel, target: x86_64-apple-darwin,            use-cross: n, ext: "" }
-          - { os: macos-15,       target: aarch64-apple-darwin,           use-cross: n, ext: "" }
+          - { os: macos-15-intel, target: aarch64-apple-darwin,           use-cross: n, ext: "" }
           # Windows
           - { os: windows-2022,   target: x86_64-pc-windows-msvc,         use-cross: n, ext: ".exe" }
     steps:
@@ -78,5 +78,5 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        draft: true
+        draft: false
         files: artifacts/**/*
