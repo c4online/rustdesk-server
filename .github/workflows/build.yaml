@@ -36,7 +36,7 @@ jobs:
           - { name: "arm64v8", target: "aarch64-unknown-linux-musl" }
           - { name: "armv7",   target: "armv7-unknown-linux-musleabihf" }
           - { name: "i386",    target: "i686-unknown-linux-musl" }
-steps:
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -45,37 +45,21 @@ steps:
         with:
           targets: ${{ matrix.job.target }}
 
-      # 仅Linux平台安装cross，Windows/macOS原生编译不需要，避免安装失败
-      - name: Install cross (Linux only)
-        if: startsWith(matrix.job.os, 'ubuntu')
+      - name: Install cross
         run: cargo install cross --locked
-        shell: bash
 
-      # 你的Build命令完全保留，和之前编译成功时一模一样
       - name: Build binaries
         run: cross build --release --all-features --target=${{ matrix.job.target }}
-        shell: bash
-        # 如果包含Windows/macOS job跑cross报错，把上面的run替换成下面这段（自动判断平台）
-        # run: |
-        #   if [[ "${{ matrix.job.os }}" == ubuntu-* ]]; then
-        #     export CROSS_NO_WARNINGS=0
-        #     cross build --release --all-features --target=${{ matrix.job.target }}
-        #   else
-        #     cargo build --release --all-features --target=${{ matrix.job.target }}
-        #   fi
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-server-${{ matrix.job.target }}
-          # 通配符自动匹配：Linux/macOS无后缀二进制、Windows带.exe的二进制
+          name: binaries-linux-${{ matrix.job.name }}
           path: |
-            target/${{ matrix.job.target }}/release/hbbs*
-            target/${{ matrix.job.target }}/release/hbbr*
-            target/${{ matrix.job.target }}/release/rustdesk-utils*
+            target/${{ matrix.job.target }}/release/hbbs
+            target/${{ matrix.job.target }}/release/hbbr
+            target/${{ matrix.job.target }}/release/rustdesk-utils
           if-no-files-found: error
-
-
 
   # ---------------- Windows binaries ----------------
   build-win:
