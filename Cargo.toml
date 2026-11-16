@@ -62,6 +62,7 @@ reqwest = { git = "https://github.com/rustdesk-org/reqwest", features = ["blocki
 [build-dependencies]
 hbb_common = { path = "libs/hbb_common" }
 
+
 [workspace]
 members = ["libs/hbb_common"]
 exclude = ["ui"]
@@ -78,10 +79,13 @@ strip = true
 
 # 降低依赖包/过程宏的 codegen-units 并发压力，缓解 Windows 下 sqlx 过程宏 DLL 初始化问题
 # 注意：Cargo 不允许在 [profile.*.package.*] 段中指定 lto，这里只放合法的 codegen-units
-[profile.release.package."*"]
-codegen-units = 16
 
 # build script 与 proc-macro 使用较低优化，避免其 DLL 在 Windows 加载器中初始化失败
 [profile.release.build-override]
+opt-level = 1
+codegen-units = 16
+
+# 单独给sqlx-macros降低优化，解决Windows DLL初始化失败（os error 1114）
+[profile.release.package.sqlx-macros]
 opt-level = 1
 codegen-units = 16
