@@ -1,171 +1,82 @@
-name: build
+name: Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-    tags: [ 'v*' ] # 推送v开头版本标签时自动发布Release
-  workflow_dispatch: # 保留手动触发
+    tags:
+      - '*'
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # 原有Linux编译逻辑完全不变，仅统一产物命名
   build:
-    name: build ${{ matrix.job.name }}
+    name: ${{ matrix.job.os }} (${{ matrix.job.target }})
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
       matrix:
         job:
-          - name: Linux-x86_64
-            os: ubuntu-20.04
-            target: x86_64-unknown-linux-musl
-          - name: Linux-arm64
-            os: ubuntu-20.04
-            target: aarch64-unknown-linux-musl
-          - name: Linux-armv7
-            os: ubuntu-20.04
-            target: armv7-unknown-linux-musleabihf
-          - name: Linux-i686
-            os: ubuntu-20.04
-            target: i686-unknown-linux-musl
+          # Linux 三个目标（与之前编译成功时完全一致）
+          - { os: ubuntu-22.04,   target: x86_64-unknown-linux-gnu,       use-cross: n, ext: "" }
+          - { os: ubuntu-22.04,   target: armv7-unknown-linux-gnueabihf,  use-cross: y, ext: "" }
+          - { os: ubuntu-22.04,   target: aarch64-unknown-linux-gnu,      use-cross: y, ext: "" }
+          # macOS 两个目标：Intel 用 macos-15-intel，Apple Silicon 用 macos-15
+          - { os: macos-15-intel, target: x86_64-apple-darwin,            use-cross: n, ext: "" }
+          - { os: macos-15,       target: aarch64-apple-darwin,           use-cross: n, ext: "" }
+          # Windows
+          - { os: windows-2022,   target: x86_64-pc-windows-msvc,         use-cross: n, ext: ".exe" }
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.job.target }}
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.job.target }}
 
-      - name: Install cross
-        run: cargo install cross --locked
+    - name: Install cross
+      if: matrix.job.use-cross == 'y'
+      run: cargo install cross --locked
 
-      - name: Build binaries
-        run: cross build --release --all-features --target=${{ matrix.job.target }}
-        shell: bash
+    - name: Build
+      shell: bash
+      run: |
+        if [ "${{ matrix.job.use-cross }}" = "y" ]; then
+          cross build --release --all-features --target=${{ matrix.job.target }}
+        else
+          cargo build --release --all-features --target=${{ matrix.job.target }}
+        fi
 
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
-        with:
-          # 统一命名格式，方便后续打包发布
-          name: rustdesk-${{ matrix.job.target }}
-          path: |
-            target/${{ matrix.job.target }}/release/hbbs
-            target/${{ matrix.job.target }}/release/hbbr
-            target/${{ matrix.job.target }}/release/rustdesk-utils
-          if-no-files-found: error
+    - name: Package
+      shell: bash
+      run: |
+        mkdir -p dist
+        cp target/${{ matrix.job.target }}/release/hbbs${{ matrix.job.ext }} dist/
+        cp target/${{ matrix.job.target }}/release/hbbr${{ matrix.job.ext }} dist/
+        cp target/${{ matrix.job.target }}/release/rustdesk-utils${{ matrix.job.ext }} dist/
+        cd dist && tar czf ../rustdesk-server-${{ matrix.job.target }}.tar.gz *
 
-  # 原有Windows编译逻辑完全不变，仅统一产物命名
-  build-win:
-    name: build Windows x86_64
-    runs-on: windows-2022
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: rustdesk-server-${{ matrix.job.target }}
+        path: |
+          dist/
+          rustdesk-server-${{ matrix.job.target }}.tar.gz
 
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Install cross
-        run: cargo install cross --locked
-        shell: bash
-
-      - name: Build binaries
-        run: cross build --release --all-features --target=x86_64-pc-windows-msvc
-        shell: bash
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
-        with:
-          # 统一命名格式
-          name: rustdesk-x86_64-pc-windows-msvc
-          path: |
-            target/x86_64-pc-windows-msvc/release/hbbs.exe
-            target/x86_64-pc-windows-msvc/release/hbbr.exe
-            target/x86_64-pc-windows-msvc/release/rustdesk-utils.exe
-          if-no-files-found: error
-
-  # 新增：macOS双架构原生编译（Apple Silicon M系列 + Intel）
-  build-macos:
-    name: build ${{ matrix.job.name }}
-    runs-on: ${{ matrix.job.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        job:
-          - name: macOS-AppleSilicon
-            os: macos-14 # Apple Silicon arm64原生runner
-            target: aarch64-apple-darwin
-          - name: macOS-Intel
-            os: macos-13 # Intel x86_64原生runner
-            target: x86_64-apple-darwin
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.job.target }}
-
-      # macOS原生编译不需要cross，直接cargo build
-      - name: Build binaries
-        run: cargo build --release --all-features --target=${{ matrix.job.target }}
-        shell: bash
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustdesk-${{ matrix.job.target }}
-          path: |
-            target/${{ matrix.job.target }}/release/hbbs
-            target/${{ matrix.job.target }}/release/hbbr
-            target/${{ matrix.job.target }}/release/rustdesk-utils
-          if-no-files-found: error
-
-  # 新增：全平台编译完成后自动发布到Release页面
   release:
-    name: Publish to GitHub Release
-    needs: [build, build-win, build-macos] # 等待所有平台编译完成
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') # 仅在推送v开头版本标签时发布正式Release
+    name: Github release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-22.04
     steps:
-      - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Package binaries per platform
-        run: |
-          cd artifacts
-          # 逐个平台打包：Windows打zip，Linux/macOS打tar.gz
-          for dir in rustdesk-*/; do
-            target=$(basename "$dir")
-            if [[ $target == *"windows"* ]]; then
-              # Windows二进制带.exe后缀，打包为zip
-              cd "$dir"
-              zip -r "../rustdesk-server-${target}.zip" *.exe
-              cd ..
-            else
-              # Linux/macOS二进制无后缀，打包为tar.gz并加执行权限
-              chmod +x "$dir"/*
-              tar czf "rustdesk-server-${target}.tar.gz" -C "$dir" .
-            fi
-          done
-          ls -la # 列出所有打包文件确认
-
-      - name: Create Release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          name: RustDesk Server ${{ github.ref_name }}
-          body: |
-            ## RustDesk Server 自建版本 ${{ github.ref_name }}
-            自动构建全平台二进制，包含：
-            - Linux：x86_64 / arm64 / armv7 / i686（musl静态链接，无依赖）
-            - Windows：x86_64
-            - macOS：Apple Silicon(M系列) / Intel
-          files: artifacts/rustdesk-server-*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub自动提供，无需额外配置
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        files: artifacts/**/*
