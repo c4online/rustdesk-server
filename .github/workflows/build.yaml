@@ -1,4 +1,4 @@
-name: build
+name: Build and publish to ghcr.io
 
 # ------------- NOTE
 # please setup some secrets before running this workflow:
@@ -10,6 +10,7 @@ name: build
 on:
   workflow_dispatch:
   push:
+    branches: [ main ]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - '[0-9]+.[0-9]+.[0-9]+'
