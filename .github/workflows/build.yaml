@@ -1,11 +1,4 @@
-name: Build and publish to ghcr.io
-
-# ------------- NOTE
-# please setup some secrets before running this workflow:
-# DOCKER_IMAGE should be the target image name on docker hub (e.g. "rustdesk/rustdesk-server-s6" )
-# DOCKER_IMAGE_CLASSIC should be the target image name on docker hub for the old build (e.g. "rustdesk/rustdesk-server" )
-# DOCKER_USERNAME is the username you normally use to login at https://hub.docker.com/
-# DOCKER_PASSWORD is a token you should create under "account settings / security" with read/write access
+name: build
 
 on:
   workflow_dispatch:
@@ -13,6 +6,9 @@ on:
     branches: [ main ]
     tags:
       - '*'
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
@@ -22,127 +18,73 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { os: ubuntu-20.04 , target: x86_64-unknown-linux-gnu , use-cross: n  , features: "" }
-          - { os: ubuntu-20.04 , target: armv7-unknown-linux-gnueabihf , use-cross: y , features: "sqlite-static" }
-          - { os: ubuntu-20.04 , target: aarch64-unknown-linux-gnu , use-cross: y , features: "sqlite-static" }
-          - { os: macos-12 , target: x86_64-apple-darwin , use-cross: n , features: "" }
-          - { os: macos-12 , target: aarch64-apple-darwin , use-cross: n , features: "" }
-          - { os: windows-2022, target: x86_64-pc-windows-msvc   , use-cross: n , features: "" }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, use-cross: n, features: "" }
+          - { os: ubuntu-24.04, target: armv7-unknown-linux-gnueabihf, use-cross: y, features: "sqlite-static" }
+          - { os: ubuntu-24.04, target: aarch64-unknown-linux-gnu, use-cross: y, features: "sqlite-static" }
+          - { os: macos-15, target: x86_64-apple-darwin, use-cross: n, features: "" }
+          - { os: macos-15, target: aarch64-apple-darwin, use-cross: n, features: "" }
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, use-cross: n, features: "" }
     steps:
-    - name: Install prerequisites
+    - uses: actions/checkout@v4
+
+    - name: Install prerequisites (ubuntu)
       if: startsWith(matrix.job.os, 'ubuntu')
       run: |
         sudo apt-get update
-        sudo apt-get -y install gcc g++ libclang-dev libvpx-dev libclang-dev nasm libxdo-dev libxcb-render-util0-dev libxcb-shape0-dev libxfixes-dev libxcb1-dev libxcb-randr0-dev libxrandr-dev libpulse-dev clang libasound2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libssl-dev
+        sudo apt-get -y install gcc g++ libssl-dev pkg-config cmake
         rustup default stable
         rustup target add ${{ matrix.job.target }}
-    - name: Install prerequisites (cross)
-      if: matrix.job.use-cross == 'y'
-      run: |
-        cargo install cross --git https://github.com/cross-rs/cross
+
     - name: Install prerequisites (macos)
       if: startsWith(matrix.job.os, 'macos')
       run: |
-        brew install libvpx nasm
         rustup default stable
         rustup target add ${{ matrix.job.target }}
+
     - name: Install prerequisites (windows)
       if: startsWith(matrix.job.os, 'windows')
       shell: bash
       run: |
-        choco install nasm
-        vcpkg integrate install
-        vcpkg install libvpx:x64-windows-static-md
-        echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
-        echo "OPENSSL_DIR=C:\\vcpkg\\installed\\x64-windows-static-md" >> $GITHUB_ENV
-        echo "VCPKGRS_DYNAMIC=1" >> $GITHUB_ENV
-        echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
         rustup default stable-x86_64-pc-windows-msvc
         rustup target add ${{ matrix.job.target }}
-    - uses: actions/checkout@v4
-    - name: Build (unix)
-      if: matrix.job.use-cross == 'y' || startsWith(matrix.job.os, 'macos')
+
+    - name: Install cross
+      if: matrix.job.use-cross == 'y'
+      run: cargo install cross --locked
+
+    - name: Build
+      shell: bash
       run: |
-        if [ "${{ matrix.job.use-cross }}" = "y" ]
-        then
+        if [ "${{ matrix.job.use-cross }}" = "y" ]; then
           cross build --release --features "${{ matrix.job.features }}" --target=${{ matrix.job.target }}
         else
-          if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]
-          then
-            cd libs/scrap && patch -p0 < ../scrap/macos.diff && cd ../..
-            SDKROOT=$(xcrun -sdk macosx --show-sdk-path) MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --release --features "${{ matrix.job.features }}" --target=${{ matrix.job.target }}
-          else
-            cargo build --release --features "${{ matrix.job.features }}" --target=${{ matrix.job.target }}
-          fi
+          cargo build --release --features "${{ matrix.job.features }}" --target=${{ matrix.job.target }}
         fi
-        mkdir -p dist
-        if [ "${{ matrix.job.target }}" = "x86_64-unknown-linux-gnu" ]
-        then
-          cp target/${{ matrix.job.target }}/release/hbbr dist/hbbr
-          cp target/${{ matrix.job.target }}/release/hbbs dist/hbbs
-          strip dist/hbbr dist/hbbs
-        elif [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]
-        then
-          cp target/${{ matrix.job.target }}/release/hbbr dist/hbbr
-          cp target/${{ matrix.job.target }}/release/hbbs dist/hbbs
-          cd libs/scrap && patch -p0 -R < ../scrap/macos.diff && cd ../..
-        else
-          cp target/${{ matrix.job.target }}/release/hbbr dist/hbbr
-          cp target/${{ matrix.job.target }}/release/hbbs dist/hbbs
-        fi
-    - name: Build (windows)
-      if: startsWith(matrix.job.os, 'windows')
-      shell: bash
-      run: |
-        export OPENSSL_NO_VENDOR=1
-        export OPENSSL_DIR="C:\\vcpkg\\installed\\x64-windows-static-md"
-        export VCPKGRS_DYNAMIC=1
-        cargo build --release --features "${{ matrix.job.features }}" --target=${{ matrix.job.target }}
-        mkdir -p dist
-        cp target/${{ matrix.job.target }}/release/hbbs.exe dist/hbbs.exe
-        cp target/${{ matrix.job.target }}/release/hbbr.exe dist/hbbr.exe
-    - name: Build rustdesk-utils (unix)
-      if: matrix.job.use-cross == 'y' || startsWith(matrix.job.os, 'macos')
-      run: |
-        if [ "${{ matrix.job.use-cross }}" = "y" ]
-        then
-          cd rustdesk-utils && cross build --release --target=${{ matrix.job.target }} && cd ..
-        else
-          if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]
-          then
-            cd libs/scrap && patch -p0 < ../scrap/macos.diff && cd ../..
-            cd rustdesk-utils && SDKROOT=$(xcrun -sdk macosx --show-sdk-path) MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --release --target=${{ matrix.job.target }} && cd ..
-          else
-            cd rustdesk-utils && cargo build --release --target=${{ matrix.job.target }} && cd ..
-          fi
-        fi
-        cp target/${{ matrix.job.target }}/release/rustdesk-utils dist/
-        if [ "${{ matrix.job.target }}" = "x86_64-unknown-linux-gnu" ]
-        then
-          strip dist/rustdesk-utils
-        fi
-    - name: Build rustdesk-utils (windows)
-      if: startsWith(matrix.job.os, 'windows')
-      shell: bash
-      run: |
-        export OPENSSL_NO_VENDOR=1
-        export OPENSSL_DIR="C:\\vcpkg\\installed\\x64-windows-static-md"
-        export VCPKGRS_DYNAMIC=1
-        cd rustdesk-utils && cargo build --release --target=${{ matrix.job.target }} && cd ..
-        cp target/${{ matrix.job.target }}/release/rustdesk-utils.exe dist/
+
     - name: Package (unix)
       if: startsWith(matrix.job.os, 'windows') != true
       run: |
+        mkdir -p dist
+        cp target/${{ matrix.job.target }}/release/hbbr dist/
+        cp target/${{ matrix.job.target }}/release/hbbs dist/
+        cp target/${{ matrix.job.target }}/release/rustdesk-utils dist/
+        strip dist/hbbr dist/hbbs dist/rustdesk-utils 2>/dev/null || true
         cd dist
         tar czf ../rustdesk-server-${{ matrix.job.target }}.tar.gz hbbr hbbs rustdesk-utils
         cd ..
         sha256sum rustdesk-server-${{ matrix.job.target }}.tar.gz > rustdesk-server-${{ matrix.job.target }}.tar.gz.sha256
+
     - name: Package (windows)
       if: startsWith(matrix.job.os, 'windows')
+      shell: pwsh
       run: |
-        Compress-Archive -Path "dist\*" -DestinationPath rustdesk-server-${{ matrix.job.target }}.zip -Force
-        Get-FileHash rustdesk-server-${{ matrix.job.target }}.zip -Algorithm SHA256 | Select-Object Hash, Path | Format-List
-        (Get-FileHash rustdesk-server-${{ matrix.job.target }}.zip -Algorithm SHA256).Hash.ToLower() + "  rustdesk-server-${{ matrix.job.target }}.zip" | Out-File -FilePath rustdesk-server-${{ matrix.job.target }}.zip.sha256 -Encoding ascii
+        New-Item -ItemType Directory -Force -Path dist | Out-Null
+        Copy-Item "target\${{ matrix.job.target }}\release\hbbr.exe" dist\
+        Copy-Item "target\${{ matrix.job.target }}\release\hbbs.exe" dist\
+        Copy-Item "target\${{ matrix.job.target }}\release\rustdesk-utils.exe" dist\
+        Compress-Archive -Path "dist\*" -DestinationPath "rustdesk-server-${{ matrix.job.target }}.zip" -Force
+        (Get-FileHash "rustdesk-server-${{ matrix.job.target }}.zip" -Algorithm SHA256).Hash.ToLower() + "  rustdesk-server-${{ matrix.job.target }}.zip" | Out-File -FilePath "rustdesk-server-${{ matrix.job.target }}.zip.sha256" -Encoding ascii
+
     - name: Upload binary
       uses: actions/upload-artifact@v4
       with:
@@ -150,52 +92,19 @@ jobs:
         path: |
           dist/
           rustdesk-server-*
-    - name: Get date
-      if: startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/')
-      id: get-date
-      run: |
-        echo "::set-output name=year::$(date -u +"%Y")"
-        echo "::set-output name=month::$(date -u +"%m")"
-        echo "::set-output name=day::$(date -u +"%d")"
-        echo "::set-output name=sha8::$(echo ${GITHUB_SHA} | cut -c1-8)"
-    - name: Set version
-      if: startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/')
-      run: |
-        if [[ "${{ github.ref }}" == refs/tags/* ]]
-        then
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-        else
-          echo "VERSION=0" >> $GITHUB_ENV
-        fi
-    - name: Build docker images
-      if: startsWith(matrix.job.os, 'ubuntu') && startsWith(github.ref, 'refs/tags/') && matrix.job.target == 'x86_64-unknown-linux-gnu'
-      run: |
-        docker build -t ${{ secrets.DOCKER_IMAGE }}:${{ env.VERSION }} -t ${{ secrets.DOCKER_IMAGE }}:latest --build-arg VERSION=${{ env.VERSION }} docker/
-        docker build -t ${{ secrets.DOCKER_IMAGE_CLASSIC }}:${{ env.VERSION }} -t ${{ secrets.DOCKER_IMAGE_CLASSIC }}:latest -f docker-classic/Dockerfile .
-    - name: Push docker images
-      if: startsWith(matrix.job.os, 'ubuntu') && startsWith(github.ref, 'refs/tags/') && matrix.job.target == 'x86_64-unknown-linux-gnu'
-      run: |
-        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-        docker push ${{ secrets.DOCKER_IMAGE }}:${{ env.VERSION }}
-        docker push ${{ secrets.DOCKER_IMAGE }}:latest
-        docker push ${{ secrets.DOCKER_IMAGE_CLASSIC }}:${{ env.VERSION }}
-        docker push ${{ secrets.DOCKER_IMAGE_CLASSIC }}:latest
-    - name: GHCR Login
-      if: (startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/')) && matrix.job.target == 'x86_64-unknown-linux-gnu'
-      uses: docker/login-action@v2
+
+  release:
+    name: Github release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
       with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    - name: Build/Push GHCR images (main)
-      if: startsWith(github.ref, 'refs/heads/main') && matrix.job.target == 'x86_64-unknown-linux-gnu'
-      run: |
-        docker build -t ghcr.io/${{ github.repository }}:latest -t ghcr.io/${{ github.repository }}:${{ steps.get-date.outputs.year }}${{ steps.get-date.outputs.month }}${{ steps.get-date.outputs.day }}-${{ steps.get-date.outputs.sha8 }} docker/
-        docker push ghcr.io/${{ github.repository }}:latest
-        docker push ghcr.io/${{ github.repository }}:${{ steps.get-date.outputs.year }}${{ steps.get-date.outputs.month }}${{ steps.get-date.outputs.day }}-${{ steps.get-date.outputs.sha8 }}
-    - name: Build/Push GHCR images (tag)
-      if: startsWith(github.ref, 'refs/tags/') && matrix.job.target == 'x86_64-unknown-linux-gnu'
-      run: |
-        docker build -t ghcr.io/${{ github.repository }}:latest -t ghcr.io/${{ github.repository }}:${{ env.VERSION }} docker/
-        docker push ghcr.io/${{ github.repository }}:latest
-        docker push ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+        path: artifacts
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        files: artifacts/**/*
