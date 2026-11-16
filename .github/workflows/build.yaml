@@ -42,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          
 
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
@@ -83,7 +83,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          
 
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
@@ -99,8 +99,8 @@ jobs:
         uses: actions-rs/cargo@v1
         env:
           # 兜底配置：避免proc-macro DLL在Windows下被过度优化导致加载失败
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
-          CARGO_PROFILE_RELEASE_LTO: "false"
+          
+          
           SQLX_OFFLINE: true
         with:
           command: build
@@ -231,7 +231,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          
         
       - name: Download binaries
         uses: actions/download-artifact@v4
@@ -365,7 +365,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          
         
       - name: Download binaries
         uses: actions/download-artifact@v4
@@ -485,7 +485,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2

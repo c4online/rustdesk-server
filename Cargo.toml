@@ -14,7 +14,7 @@ path = "src/hbbr.rs"
 name = "rustdesk-utils"
 path = "src/utils.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# See more keys and their definitions at https://doc.crates.io/crates-io/cargo/reference/manifest.html
 
 [dependencies]
 hbb_common = { path = "libs/hbb_common" }
@@ -77,12 +77,12 @@ strip = true
 #rpath = true # Not needed
 
 # 修复 Windows MSVC 下 sqlx_macros.dll 初始化失败 (os error 1114)
-# 根因：proc-macro 在编译期会被加载为DLL执行，LTO全链路优化+单代码生成单元的激进配置
-#       会导致sqlx过程宏的DLL初始化例程在Windows加载器中崩溃
-# 修复：仅对依赖包/编译脚本/过程宏降低优化，主程序hbbs/hbbr/rustdesk-utils仍保留原release优化
-[profile.release.package."*"]
+# 根因：全局LTO+codegen-units=1会导致proc-macro编译期DLL被过度优化，在Windows加载器中崩溃
+# 修复：仅对过程宏和编译脚本关闭LTO，主程序仍保留完整release优化
+[profile.release.package.sqlx-macros]
 codegen-units = 16
 lto = false
+opt-level = 1
 
 [profile.release.build-override]
 opt-level = 1
