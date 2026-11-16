@@ -1,5 +1,5 @@
 [package]
-name = "rustdesk-server"
+name = "hbbs"
 version = "1.1.14"
 authors = ["rustdesk <dev@rustdesk.com>"]
 edition = "2021"
@@ -48,9 +48,6 @@ tower-http = { version = "0.5", features = ["cors"] }
 bytes = "1.5"
 url = "2.4"
 
-[features]
-sqlite-static = ["hbb_common/sqlite-static"]
-
 [profile.release]
 opt-level = 3
 lto = true
@@ -58,20 +55,25 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-[profile.release.package."sqlx-macros"]
+# 单独给sqlx-macros调整编译参数，解决Windows下DLL初始化失败（os error 1114）
+# 这是过程宏，仅编译期运行，不需要主程序的极致优化，不影响最终二进制性能
+[profile.release.package.sqlx-macros]
 opt-level = 1
+lto = false
 codegen-units = 16
+panic = "unwind"
+incremental = true
 
 [workspace]
 members = ["libs/hbb_common"]
 
 [[bin]]
-name = "hbbs"
-path = "src/main.rs"
-
-[[bin]]
 name = "hbbr"
 path = "src/hbbr.rs"
+
+[[bin]]
+name = "hbbs"
+path = "src/main.rs"
 
 [[bin]]
 name = "rustdesk-utils"
