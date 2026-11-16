@@ -36,7 +36,7 @@ jobs:
           - { name: "arm64v8", target: "aarch64-unknown-linux-musl" }
           - { name: "armv7",   target: "armv7-unknown-linux-musleabihf" }
           - { name: "i386",    target: "i686-unknown-linux-musl" }
-    steps:
+steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -45,60 +45,36 @@ jobs:
         with:
           targets: ${{ matrix.job.target }}
 
-      # 仅Linux平台安装cross，macOS/Windows原生编译不需要cross，节省时间且避免错误
+      # 仅Linux平台安装cross，Windows/macOS原生编译不需要，避免安装失败
       - name: Install cross (Linux only)
         if: startsWith(matrix.job.os, 'ubuntu')
         run: cargo install cross --locked
+        shell: bash
 
+      # 你的Build命令完全保留，和之前编译成功时一模一样
       - name: Build binaries
-        run: |
-          if [[ "${{ matrix.job.os }}" == ubuntu-* ]]; then
-            # Linux平台用cross交叉编译
-            export CROSS_NO_WARNINGS=0
-            cross build --release --all-features --target=${{ matrix.job.target }}
-          else
-            # macOS/Windows平台直接原生cargo编译
-            cargo build --release --all-features --target=${{ matrix.job.target }}
-          fi
-
-      # （可选）如果想要和官方一样打包成压缩包+sha256校验，加上这一步
-      - name: Package binaries
-        run: |
-          mkdir -p dist
-          if [[ "${{ matrix.job.os }}" == windows-* ]]; then
-            # Windows二进制带.exe后缀，打包成zip
-            cp target/${{ matrix.job.target }}/release/hbbs.exe dist/
-            cp target/${{ matrix.job.target }}/release/hbbr.exe dist/
-            cp target/${{ matrix.job.target }}/release/rustdesk-utils.exe dist/
-            cd dist
-            7z a ../rustdesk-server-${{ matrix.job.target }}.zip *.exe
-            cd ..
-            certutil -hashfile rustdesk-server-${{ matrix.job.target }}.zip SHA256 > rustdesk-server-${{ matrix.job.target }}.zip.sha256
-          else
-            # Linux/macOS二进制无后缀，打包成tar.gz
-            cp target/${{ matrix.job.target }}/release/hbbs dist/
-            cp target/${{ matrix.job.target }}/release/hbbr dist/
-            cp target/${{ matrix.job.target }}/release/rustdesk-utils dist/
-            chmod +x dist/*
-            tar czf rustdesk-server-${{ matrix.job.target }}.tar.gz -C dist .
-            sha256sum rustdesk-server-${{ matrix.job.target }}.tar.gz > rustdesk-server-${{ matrix.job.target }}.tar.gz.sha256
-          fi
+        run: cross build --release --all-features --target=${{ matrix.job.target }}
+        shell: bash
+        # 如果包含Windows/macOS job跑cross报错，把上面的run替换成下面这段（自动判断平台）
+        # run: |
+        #   if [[ "${{ matrix.job.os }}" == ubuntu-* ]]; then
+        #     export CROSS_NO_WARNINGS=0
+        #     cross build --release --all-features --target=${{ matrix.job.target }}
+        #   else
+        #     cargo build --release --all-features --target=${{ matrix.job.target }}
+        #   fi
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: rustdesk-server-${{ matrix.job.target }}
-          # 如果加了上面的打包步骤，path用下面这行（直接下压缩包）
+          # 通配符自动匹配：Linux/macOS无后缀二进制、Windows带.exe的二进制
           path: |
-            rustdesk-server-*.tar.gz
-            rustdesk-server-*.zip
-            rustdesk-server-*.sha256
-          # 如果不需要打包，直接传原始二进制，path用下面这行（注意Windows加.exe）
-          # path: |
-          #   target/${{ matrix.job.target }}/release/hbbs*
-          #   target/${{ matrix.job.target }}/release/hbbr*
-          #   target/${{ matrix.job.target }}/release/rustdesk-utils*
+            target/${{ matrix.job.target }}/release/hbbs*
+            target/${{ matrix.job.target }}/release/hbbr*
+            target/${{ matrix.job.target }}/release/rustdesk-utils*
           if-no-files-found: error
+
 
 
   # ---------------- Windows binaries ----------------
