@@ -1,82 +1,156 @@
-name: Build
+name: build
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
     tags:
-      - '*'
+      - 'v*'
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+
   build:
-    name: ${{ matrix.job.os }} (${{ matrix.job.target }})
-    runs-on: ${{ matrix.job.os }}
+    name: Build - ${{ matrix.job.name }}
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         job:
-          # Linux 三个目标（与之前编译成功时完全一致）
-          - { os: ubuntu-22.04,   target: x86_64-unknown-linux-gnu,       use-cross: n, ext: "" }
-          - { os: ubuntu-22.04,   target: armv7-unknown-linux-gnueabihf,  use-cross: y, ext: "" }
-          - { os: ubuntu-22.04,   target: aarch64-unknown-linux-gnu,      use-cross: y, ext: "" }
-          # macOS 两个目标：Intel 用 macos-15-intel，Apple Silicon 用 macos-15
-          - { os: macos-15-intel, target: x86_64-apple-darwin,            use-cross: n, ext: "" }
-          - { os: macos-15-intel, target: aarch64-apple-darwin,           use-cross: n, ext: "" }
-          # Windows
-          - { os: windows-2022,   target: x86_64-pc-windows-msvc,         use-cross: n, ext: ".exe" }
+          - { name: "linux-amd64",   target: "x86_64-unknown-linux-musl" }
+          - { name: "linux-arm64v8", target: "aarch64-unknown-linux-musl" }
+          - { name: "linux-armv7",   target: "armv7-unknown-linux-musleabihf" }
+          - { name: "linux-i386",    target: "i686-unknown-linux-musl" }
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: ${{ matrix.job.target }}
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
 
-    - name: Install cross
-      if: matrix.job.use-cross == 'y'
-      run: cargo install cross --locked
+      - name: Install cross
+        run: cargo install cross --locked
 
-    - name: Build
-      shell: bash
-      run: |
-        if [ "${{ matrix.job.use-cross }}" = "y" ]; then
-          cross build --release --all-features --target=${{ matrix.job.target }}
-        else
+      - name: Build binaries
+        run: cross build --release --all-features --target=${{ matrix.job.target }}
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.job.name }}
+          path: |
+            target/${{ matrix.job.target }}/release/hbbs
+            target/${{ matrix.job.target }}/release/hbbr
+            target/${{ matrix.job.target }}/release/rustdesk-utils
+          if-no-files-found: error
+
+  build-win:
+    name: Build - windows
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build binaries
+        run: cargo build --release --all-features --target=x86_64-pc-windows-msvc
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-windows-x86_64
+          path: |
+            target/x86_64-pc-windows-msvc/release/hbbs.exe
+            target/x86_64-pc-windows-msvc/release/hbbr.exe
+            target/x86_64-pc-windows-msvc/release/rustdesk-utils.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build - ${{ matrix.job.name }}
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { name: "macos-x86_64", target: "x86_64-apple-darwin" }
+          - { name: "macos-arm64",  target: "aarch64-apple-darwin" }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
+            export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+          fi
           cargo build --release --all-features --target=${{ matrix.job.target }}
-        fi
 
-    - name: Package
-      shell: bash
-      run: |
-        mkdir -p dist
-        cp target/${{ matrix.job.target }}/release/hbbs${{ matrix.job.ext }} dist/
-        cp target/${{ matrix.job.target }}/release/hbbr${{ matrix.job.ext }} dist/
-        cp target/${{ matrix.job.target }}/release/rustdesk-utils${{ matrix.job.ext }} dist/
-        cd dist && tar czf ../rustdesk-server-${{ matrix.job.target }}.tar.gz *
-
-    - name: Upload binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: rustdesk-server-${{ matrix.job.target }}
-        path: |
-          dist/
-          rustdesk-server-${{ matrix.job.target }}.tar.gz
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.job.name }}
+          path: |
+            target/${{ matrix.job.target }}/release/hbbs
+            target/${{ matrix.job.target }}/release/hbbr
+            target/${{ matrix.job.target }}/release/rustdesk-utils
+          if-no-files-found: error
 
   release:
     name: Github release
+    needs:
+      - build
+      - build-win
+      - build-macos
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
     runs-on: ubuntu-22.04
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        draft: false
-        files: artifacts/**/*
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package and checksum
+        shell: bash
+        run: |
+          set -e
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            pkg=${name#binaries-}
+            if [[ "$name" == *"windows"* ]]; then
+              (cd "$dir" && zip -r "../../rustdesk-server-${pkg}.zip" .)
+            else
+              chmod +x "$dir"/*
+              tar czf "rustdesk-server-${pkg}.tar.gz" -C "$dir" .
+            fi
+          done
+          sha256sum rustdesk-server-* > SHA256SUMS.txt
+          ls -l rustdesk-server-*
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            rustdesk-server-*.tar.gz
+            rustdesk-server-*.zip
+            SHA256SUMS.txt
