@@ -53,7 +53,10 @@ jobs:
         choco install nasm
         vcpkg integrate install
         vcpkg install libvpx:x64-windows-static-md
-        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
+        echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+        echo "OPENSSL_DIR=C:\\vcpkg\\installed\\x64-windows-static-md" >> $GITHUB_ENV
+        echo "VCPKGRS_DYNAMIC=1" >> $GITHUB_ENV
+        echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
         rustup default stable-x86_64-pc-windows-msvc
         rustup target add ${{ matrix.job.target }}
     - uses: actions/checkout@v4
