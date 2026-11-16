@@ -54,21 +54,16 @@ local-ip-address = "0.4"
 sys-locale = "0.2"
 
 [profile.release]
+opt-level = 3
 lto = true
 codegen-units = 1
-strip = true
 panic = "abort"
-
-[profile.release.package."*"]
-lto = false
-codegen-units = 16
-
-[profile.release.build-override]
-opt-level = 1
-lto = false
-codegen-units = 16
+strip = true
 
 [profile.release.package.sqlx-macros]
 opt-level = 1
-lto = false
 codegen-units = 16
+
+[profile.dev]
+opt-level = 0
+debug = 1
